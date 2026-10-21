@@ -23,6 +23,12 @@ requerimientos adicionales del taller general. Los originales se conservan.
 Las temperaturas son **datos sinteticos**, no mediciones reales de Tunja.
 Los empleados proceden del CSV original enlazado por el docente.
 
+**Enfoque funcional:** se usan funciones, `map`, `filter`, `starmap` y operaciones
+vectorizadas de NumPy y Pandas. No se usan sentencias `if`/`else`, expresiones
+condicionales, ciclos `for`/`while` ni comprensiones. Las transformaciones devuelven
+resultados nuevos; los ejemplos que requieren modificar una copia, las graficas y
+la escritura de archivos conservan los efectos externos necesarios del ejercicio.
+
 ## Preparacion
 Ejecute las celdas en orden. Se requiere Python con NumPy, Pandas, Matplotlib,
 PyTables (`tables`), OpenPyXL, lxml y ReportLab. En un entorno nuevo de Jupyter
@@ -32,14 +38,13 @@ Los archivos exportados se guardan en `salidas_taller3`.
 ''')
 code('''
 from pathlib import Path
+from itertools import product, starmap
 import sys
 
-BASE = Path.cwd()
-if (BASE / 'taller 3').is_dir():
-    BASE = BASE / 'taller 3'
+BASE = next(filter(lambda ruta: (ruta / 'datos' / 'employees.csv').exists(),
+                   (Path.cwd(), Path.cwd() / 'taller 3')), Path.cwd())
 dependencias = BASE.parent / '.taller3_deps'
-if dependencias.is_dir():
-    sys.path.insert(0, str(dependencias))
+sys.path[:0] = list(map(str, filter(Path.is_dir, (dependencias,))))
 
 import numpy as np
 import pandas as pd
@@ -81,10 +86,17 @@ temperaturas = pd.DataFrame({
 display(temperaturas.head())
 display(temperaturas.drop(columns='Hora').agg(['count', 'min', 'max']))
 fig, ejes = plt.subplots(3, 1, figsize=(10, 9), sharex=True, sharey=True)
-for eje, columna in zip(ejes, ['Linspace', 'Arange', 'Uniforme']):
-    eje.plot(horas, temperaturas[columna], marker='o', markersize=3)
+
+def graficar_temperatura(eje, columna, datos):
+    eje.plot(datos['Hora'], datos[columna], marker='o', markersize=3)
     eje.set(title=columna, ylabel='Temperatura (C)', xlim=(0, 24), ylim=(3, 20))
     eje.set_xticks(np.arange(0, 25, 2))
+    return eje
+
+ejes_configurados = tuple(map(
+    lambda par: graficar_temperatura(par[0], par[1], temperaturas),
+    zip(ejes, ['Linspace', 'Arange', 'Uniforme']),
+))
 ejes[-1].set_xlabel('Hora del dia')
 fig.suptitle('Tunja: temperaturas sinteticas cada media hora')
 fig.tight_layout()
@@ -145,8 +157,6 @@ valores = np.array([0, 1, 1, 2, 2, 2, 4])
 frecuencias = np.bincount(valores)
 print('Frecuencias:', frecuencias)
 print('Moda:', frecuencias.argmax())
-if hasattr(np, 'bitwise_count'):
-    print('Bits encendidos de 1, 3, 7:', np.bitwise_count(np.array([1, 3, 7])))
 ''')
 md('''
 `hstack`, `vstack` y `dstack` apilan arreglos. Con dos vectores, producen
@@ -156,11 +166,11 @@ dimensiones con los pares en el ultimo eje. `tolist()` convierte a listas de Pyt
 code('''
 a = np.array([1, 2, 3])
 b = np.array([4, 5, 6])
-for nombre, resultado in [('hstack', np.hstack((a, b))),
-                          ('vstack', np.vstack((a, b))),
-                          ('dstack', np.dstack((a, b)))]:
-    print(nombre, 'forma:', resultado.shape)
-    print(resultado)
+apilados = dict(map(lambda funcion: (funcion.__name__, funcion((a, b))),
+                    (np.hstack, np.vstack, np.dstack)))
+print('hstack:', apilados['hstack'], 'Forma:', apilados['hstack'].shape)
+print('vstack:', apilados['vstack'], 'Forma:', apilados['vstack'].shape)
+print('dstack:', apilados['dstack'], 'Forma:', apilados['dstack'].shape)
 print('Lista:', a.tolist(), type(a.tolist()))
 ''')
 md('''
@@ -225,10 +235,13 @@ Fuente: [documentacion de ravel](https://numpy.org/doc/stable/reference/generate
 code('''
 matriz_c = np.array([[1, 2, 3], [4, 5, 6]])
 matriz_f = np.asfortranarray(matriz_c)
-for nombre, arreglo in [('C-contiguo', matriz_c), ('F-contiguo', matriz_f)]:
-    print(nombre)
-    for orden in ['C', 'F', 'A', 'K']:
-        print(orden, np.ravel(arreglo, order=orden))
+variantes = product([('C-contiguo', matriz_c), ('F-contiguo', matriz_f)], ['C', 'F', 'A', 'K'])
+resultados_ravel = pd.DataFrame(list(starmap(
+    lambda caso, orden: {'Arreglo': caso[0], 'Orden': orden,
+                         'Resultado': np.ravel(caso[1], order=orden).tolist()},
+    variantes,
+)))
+display(resultados_ravel)
 # Este arreglo no es contiguo ni en C ni en F: A y K pueden diferir.
 vista = np.arange(12).reshape(2, 3, 2).swapaxes(1, 2)
 print('Vista no contigua, A:', vista.ravel(order='A'))
@@ -267,9 +280,14 @@ del indice, no solamente por la posicion de los valores.
 code('''
 personas = pd.DataFrame({'Nombre': ['Ana', 'Luis', 'Marta']}, index=[10, 20, 30])
 edades = pd.Series([22, 25, 28], index=[10, 20, 30])
-personas.insert(1, 'Edad', edades)
-con_mayoria = personas.assign(Mayor_de_edad=lambda df: df['Edad'] >= 18)
-display(personas)
+def insertar_serie(datos, posicion, nombre, serie):
+    copia = datos.copy()
+    copia.insert(posicion, nombre, serie)
+    return copia
+
+personas_con_edad = insertar_serie(personas, 1, 'Edad', edades)
+con_mayoria = personas_con_edad.assign(Mayor_de_edad=lambda df: df['Edad'] >= 18)
+display(personas_con_edad)
 display(con_mayoria)
 ''')
 md('''
@@ -315,11 +333,10 @@ URL_EMPLEADOS = 'https://drive.google.com/uc?export=download&id=1TJrHAQo-wrZe0zm
 ARCHIVO_EMPLEADOS = BASE / 'datos' / 'employees.csv'
 
 def cargar_empleados():
-    fuente = ARCHIVO_EMPLEADOS if ARCHIVO_EMPLEADOS.exists() else URL_EMPLEADOS
+    fuente = next(filter(Path.exists, (ARCHIVO_EMPLEADOS,)), URL_EMPLEADOS)
     df = pd.read_csv(fuente)
     requeridas = {'First Name', 'Gender', 'Salary', 'Team'}
-    if not requeridas.issubset(df.columns):
-        raise ValueError('La fuente no contiene las columnas del archivo de empleados.')
+    assert requeridas.issubset(df.columns), 'La fuente no contiene las columnas de empleados.'
     return df
 
 df_emp = cargar_empleados()
@@ -490,8 +507,8 @@ resumen_equipos = (
     df_emp.assign(Team=df_emp['Team'].fillna('Sin equipo'))
     .groupby('Team', as_index=False)
     .agg(Empleados=('Salary', 'size'), Salario_promedio=('Salary', 'mean'))
+    .assign(Salario_promedio=lambda df: df['Salario_promedio'].round(2))
 )
-resumen_equipos['Salario_promedio'] = resumen_equipos['Salario_promedio'].round(2)
 ruta_html = SALIDAS / 'resumen_equipos.html'
 pagina = ('<!doctype html><html lang="es"><head><meta charset="utf-8">'
           '<title>Resumen por equipo</title></head><body>'
@@ -520,9 +537,10 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 
 ruta_pdf = SALIDAS / 'resumen_equipos.pdf'
 estilos = getSampleStyleSheet()
-filas_pdf = [['Equipo', 'Empleados', 'Salario promedio']]
-for fila in resumen_equipos.itertuples(index=False):
-    filas_pdf.append([fila.Team, str(fila.Empleados), f'{fila.Salario_promedio:,.2f}'])
+formatear_fila = lambda fila: [fila.Team, str(fila.Empleados), f'{fila.Salario_promedio:,.2f}']
+filas_pdf = [['Equipo', 'Empleados', 'Salario promedio']] + list(map(
+    formatear_fila, resumen_equipos.itertuples(index=False),
+))
 tabla_pdf = Table(filas_pdf, colWidths=[190, 100, 160], repeatRows=1)
 tabla_pdf.setStyle(TableStyle([
     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#176B62')),
@@ -559,25 +577,43 @@ from openpyxl.utils import get_column_letter
 
 ruta_excel = SALIDAS / 'empleados_por_equipo.xlsx'
 equipos_exportar = df_emp['Team'].fillna('Sin equipo')
+
+def formatear_cabecera(celda):
+    celda.font = Font(bold=True, color='FFFFFF')
+    celda.fill = PatternFill('solid', fgColor='176B62')
+    return celda.coordinate
+
+def ajustar_columna(hoja, grupo, numero, columna):
+    ancho = max(len(columna), int(grupo[columna].astype(str).fillna('').str.len().max())) + 3
+    hoja.column_dimensions[get_column_letter(numero)].width = ancho
+    return ancho
+
+def formatear_numeros(fila):
+    fila[0].number_format = '#,##0'
+    fila[1].number_format = '0.000'
+    return fila[0].row
+
+def exportar_equipo(escritor, equipo, grupo):
+    grupo.to_excel(escritor, sheet_name=equipo, index=False)
+    hoja = escritor.sheets[equipo]
+    hoja.freeze_panes = 'A2'
+    hoja.auto_filter.ref = hoja.dimensions
+    tuple(map(formatear_cabecera, hoja[1]))
+    tuple(starmap(lambda numero, columna: ajustar_columna(hoja, grupo, numero, columna),
+                  enumerate(grupo.columns, start=1)))
+    tuple(map(formatear_numeros, hoja.iter_rows(min_row=2, min_col=5, max_col=6)))
+    return equipo, len(grupo)
+
 with pd.ExcelWriter(ruta_excel, engine='openpyxl') as escritor:
-    for equipo, grupo in df_emp.groupby(equipos_exportar, sort=True):
-        grupo.to_excel(escritor, sheet_name=equipo, index=False)
-        hoja = escritor.sheets[equipo]
-        hoja.freeze_panes = 'A2'
-        hoja.auto_filter.ref = hoja.dimensions
-        for celda in hoja[1]:
-            celda.font = Font(bold=True, color='FFFFFF')
-            celda.fill = PatternFill('solid', fgColor='176B62')
-        for numero, columna in enumerate(grupo.columns, start=1):
-            ancho = max(len(columna), int(grupo[columna].astype(str).fillna('').str.len().max())) + 3
-            hoja.column_dimensions[get_column_letter(numero)].width = ancho
-        for fila in hoja.iter_rows(min_row=2, min_col=5, max_col=6):
-            fila[0].number_format = '#,##0'
-            fila[1].number_format = '0.000'
+    equipos_exportados = dict(starmap(
+        lambda equipo, grupo: exportar_equipo(escritor, equipo, grupo),
+        df_emp.groupby(equipos_exportar, sort=True),
+    ))
 
 hojas_recuperadas = pd.read_excel(ruta_excel, sheet_name=None)
-display(pd.Series({nombre: len(df) for nombre, df in hojas_recuperadas.items()}, name='Filas'))
-print('Total exportado:', sum(len(df) for df in hojas_recuperadas.values()))
+conteos = dict(starmap(lambda nombre, df: (nombre, len(df)), hojas_recuperadas.items()))
+display(pd.Series(conteos, name='Filas'))
+print('Total exportado:', sum(map(len, hojas_recuperadas.values())))
 ''')
 md('''
 ## 4. Verificaciones
@@ -599,15 +635,24 @@ assert filtro_salario['Salary'].between(49000, 50000, inclusive='neither').all()
 assert len(recuperadas) == 4 and np.isclose(recuperadas['temperatura'].mean(), 11.875)
 pd.testing.assert_frame_equal(tablas[0], resumen_equipos, check_dtype=False)
 assert set(hojas_recuperadas) == set(equipos_exportar.unique())
-for equipo, recuperado in hojas_recuperadas.items():
+def verificar_equipo(equipo, recuperado):
     esperado = df_emp.loc[equipos_exportar.eq(equipo)].reset_index(drop=True)
     pd.testing.assert_frame_equal(recuperado, esperado, check_dtype=False)
-assert sum(len(df) for df in hojas_recuperadas.values()) == len(df_emp)
+    return True
+
+assert all(starmap(verificar_equipo, hojas_recuperadas.items()))
+assert sum(map(len, hojas_recuperadas.values())) == len(df_emp)
 print('Todas las verificaciones finalizaron correctamente.')
 ''')
 md('''
 ## 5. Ideas para sustentar
 
+- **Programacion funcional:** `map` transforma cada elemento, `filter` selecciona
+  mediante un predicado y `starmap` entrega cada tupla como argumentos separados.
+  `product` genera combinaciones para comparar los ordenes de `ravel`.
+  Las condiciones se expresan como mascaras o predicados, sin sentencias condicionales.
+  `map` es perezoso: `list`, `tuple` o `dict` consumen sus resultados. En las exportaciones
+  ese consumo garantiza que se escriban todas las hojas antes de cerrar el archivo.
 - **NumPy:** trabajo con arreglos, operaciones vectorizadas y semillas reproducibles.
   Distingo cantidad de puntos (`linspace`) de paso (`arange`) y muestreo temporal.
 - **Pandas:** una Serie representa una columna; un DataFrame organiza varias columnas.
@@ -631,4 +676,4 @@ nbf.validate(notebook)
 destino = BASE / 'Solucion_Completa_Taller3_Unidad3.ipynb'
 nbf.write(notebook, destino)
 print(destino)
-print('Celdas:', len(cells), 'Codigo:', sum(c.cell_type == 'code' for c in cells))
+print('Celdas:', len(cells), 'Codigo:', sum(map(lambda c: c.cell_type == 'code', cells)))

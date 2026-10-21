@@ -1,0 +1,25 @@
+# Dependencias y entornos locales
+node_modules/
+.venv/
+venv/
+env/
+.taller_dependencies/
+.taller3_deps/
+
+# Caches de Python y Jupyter
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.ipython/
+.matplotlib/
+.jupyter_runtime/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Archivos temporales de verificacion
+/tmp/
+*.log
+.DS_Store
+Thumbs.db
